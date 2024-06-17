@@ -2,6 +2,10 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang" OR CMAKE_CXX_COMPILER_ID STREQUAL "GNU
     add_compile_options(-Wall -Wextra -pedantic -march=native)
 endif()
 
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+# set(CMAKE_CXX_STANDARD 17)
 add_executable(simple_example simple_example.cpp)
 target_link_libraries(simple_example PUBLIC bvh)
 set_target_properties(simple_example PROPERTIES CXX_STANDARD 20)

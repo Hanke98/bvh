@@ -1,6 +1,7 @@
 #ifndef BVH_V2_BVH_H
 #define BVH_V2_BVH_H
 
+#include "bvh/v2/bbox.h"
 #include "bvh/v2/node.h"
 
 #include <cstddef>
@@ -9,6 +10,7 @@
 #include <stack>
 #include <utility>
 #include <algorithm>
+#include <tuple>
 
 namespace bvh::v2 {
 
@@ -62,6 +64,12 @@ struct Bvh {
     /// processed, and whether to traverse the second child first instead of the other way around.
     template <bool IsAnyHit, typename Stack, typename LeafFn, typename InnerFn>
     inline void traverse_top_down(Index start, Stack&, LeafFn&&, InnerFn&&) const;
+
+    template <bool IsAnyHit, typename Stack>
+    inline void intersect_box(const Ray& ray, Stack& stack, std::vector<int>& res) const;
+
+    template <bool IsAnyHit, typename Stack>
+    inline void intersect_box(Scalar* aabb_min, Scalar* aabb_max, Stack& stack, std::vector<int>& res) const;
 
     /// Intersects the BVH with a single ray, using the given function to intersect the contents
     /// of a leaf. The algorithm starts at the node index `start` and uses the given stack object.
@@ -150,6 +158,64 @@ restart:
             if (was_hit) return;
         }
     }
+}
+
+
+template<typename Node>
+template <bool IsAnyHit, typename Stack>
+inline void Bvh<Node>::intersect_box(Scalar* aabb_min, Scalar* aabb_max, Stack& stack, std::vector<int>& res) const {
+
+    using Vec3 = bvh::v2::Vec<Scalar, 3>;
+    Ray ray;
+    ray.org = Vec3(aabb_min[0], aabb_min[1], aabb_min[2]);
+    ray.dir = Vec3(aabb_max[0], aabb_max[1], aabb_max[2]);
+    intersect_box<IsAnyHit>(ray, stack, res);
+}
+
+template<typename Node>
+template <bool IsAnyHit, typename Stack>
+void Bvh<Node>::intersect_box(const Ray& ray, Stack& stack, std::vector<int>& res) const {
+
+    using Vec3 = bvh::v2::Vec<Scalar, 3>;
+    auto box_box_intersection = [&](
+      const Vec3& min1,
+      const Vec3& max1,
+      const Vec3& min2,
+      const Vec3& max2) -> bool 
+
+    {
+        if (max1[0] < min2[0] || max1[1] < min2[1] || max1[2] < min2[2])
+            return 0;
+        if (max2[0] < min1[0] || max2[1] < min1[1] || max2[2] < min1[2])
+            return 0;
+        return 1;
+    };
+
+    BBox<Scalar, Node::dimension> bbox(ray.org, ray.dir);
+    auto inner_fn = [&](const Node &left, const Node &right) {
+      const auto left_bbox = left.get_bbox();
+      const auto& left_min = left_bbox.min;
+      const auto& left_max = left_bbox.max;
+      auto left_inters = box_box_intersection(left_min, left_max, bbox.min, bbox.max);
+      const auto right_bbox = right.get_bbox();
+      const auto& right_min = right_bbox.min;
+      const auto& right_max = right_bbox.max;
+      auto right_inters = box_box_intersection(right_min, right_max, bbox.min, bbox.max);
+
+      return std::array<bool, 3>({left_inters, right_inters, false});
+    };
+
+    auto leaf_fn = [&](Bvh::Index::Type st, Bvh::Index::Type end) {
+
+      for(typename Bvh::Index::Type i = st; i < end; ++i) {
+        res.push_back(i);
+      }
+      return false;
+    };
+
+    res.clear();
+    traverse_top_down<false>(get_root().index, stack, leaf_fn, inner_fn);
+
 }
 
 template <typename Node>
